@@ -13,7 +13,7 @@ class RetinalDataset(Dataset):
         self.transform= transform
         existing_files= set(os.listdir(img_dir))
         self.df['filename']= self.df['id_code'].apply(lambda x: f"{x}.png")
-        self.df= self.df[self.df['filename'].isin(existing_files).reset_index(drop=True)]
+        self.df= self.df[self.df['filename'].isin(existing_files)].reset_index(drop=True)
     def __len__(self):
         return len(self.df)
     def __getitem__(self, idx):
@@ -24,7 +24,7 @@ class RetinalDataset(Dataset):
         if self.transform:
             image=self.transform(image)
         return image, label
-    def train_model(epochs=3, batch_size=16, lr=0.001):
+def train_model(epochs=3, batch_size=16, lr=0.001):
         script_dir= os.path.dirname(os.path.abspath(__file__))
         project_root= os.path.abspath(os.path.join(script_dir, ".."))
         csv_path= os.path.join(project_root, "data","raw","train.csv")
@@ -32,12 +32,12 @@ class RetinalDataset(Dataset):
         output_model_dir= os.path.join(project_root,"models")
         os.makedirs(output_model_dir, exist_ok=True)
         model_save_path= os.path.join(output_model_dir, "model.pth")
-        transforms= transforms.Compose([
+        data_transforms= transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456,0.406],std=[0.229,0.224,0.225])
         ])
         print("Loading PyTorch Dataset")
-        dataset = RetinalDataset(csv_file=csv_path, img_dir=img_dir, transform=transform)
+        dataset = RetinalDataset(csv_file=csv_path, img_dir=img_dir, transform=data_transforms)
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
         print(f"Dataset loaded: {len(dataset)} samples found")
         model= models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
@@ -70,5 +70,5 @@ class RetinalDataset(Dataset):
         torch.save(model.state_dict(), model_save_path)
         print(f"Training finished. Saved model weights to {model_save_path}")
 
-    if __name__ == "__main__":
+if __name__ == "__main__":
         train_model(epochs=3)
