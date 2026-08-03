@@ -11,7 +11,7 @@ class RetinalDataset(Dataset):
         self.df=pd.read_csv(csv_file)
         self.img_dir= img_dir
         self.transform= transform
-        existing_files= set(os.listdir(img_dir))
+        existing_files = set(os.listdir(img_dir)) if os.path.exists(img_dir) else set()
         self.df['filename']= self.df['id_code'].apply(lambda x: f"{x}.png")
         self.df= self.df[self.df['filename'].isin(existing_files)].reset_index(drop=True)
     def __len__(self):
