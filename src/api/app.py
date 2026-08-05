@@ -28,7 +28,7 @@ script_dir= os.path.dirname(os.path.abspath(__file__))
 project_root= os.path.abspath(os.path.join(script_dir,"..",".."))
 model_path= os.path.join(project_root, "models", "model.pth")
 device= torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model= models.resnet18(weight=None)
+model= models.resnet18(weights=None)
 model.fc = nn.Linear(model.fc.in_features,5)
 if os.path.exists(model_path):
     model.load_state_dict(torch.load(model_path, map_location=device))
@@ -38,7 +38,7 @@ else:
 model= model.to(device)
 model.eval()
 transforms= transforms.Compose([
-    transforms.Resisze((224, 224)),
+    transforms.Resize((224, 224)),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225])
 ])
