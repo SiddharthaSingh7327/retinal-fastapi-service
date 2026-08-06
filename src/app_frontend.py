@@ -8,7 +8,7 @@ st.set_page_config(
     page_icon="",
     layout="centered"
 )
-API_URL= "http://127.0.0.1:8000/predict"
+API_URL = os.getenv("API_URL", "http://127.0.0.1:8000/predict")
 st.title("Retinal Diagnostic Assistant")
 st.markdown("Upload a fundus image below to perform automated **Diabetic Retinopathy (DR)** assessment powered by PyTorch ResNet18.")
 st.divider()
