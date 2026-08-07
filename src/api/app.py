@@ -2,10 +2,14 @@ import io
 import os
 import torch
 import torch.nn as nn
+import sys
 from torchvision import transforms, models
 from PIL import Image
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from pydantic import BaseModel
+from imgutils import crop_dark_borders_pill
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 class PredictionResponse(BaseModel):
     filename:str
@@ -37,7 +41,9 @@ else:
     print(f"Warning: Model weights not found at {model_path}")
 model= model.to(device)
 model.eval()
-transforms= transforms.Compose([
+
+
+inference_transforms= transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225])
@@ -47,12 +53,13 @@ def read_root():
     return {"status": "ok", "message":"Retinal Diagnostic API Service is running."}
 @app.post("/predict", response_model=PredictionResponse)
 async def predict(file: UploadFile= File(...)):
-    if not file.content_type.startswith("image/"):
+    if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Uploaded file must be an image.")
     try:
         contents= await file.read()
         image= Image.open(io.BytesIO(contents)).convert("RGB")
-        tensor= transforms(image).unsqueeze(0).to(device)
+        image= crop_dark_borders_pill(image)
+        tensor = inference_transforms(image).unsqueeze(0).to(device)
         with torch.no_grad():
             outputs= model(tensor)
             probabilities= torch.softmax(outputs, dim=1)
@@ -65,6 +72,8 @@ async def predict(file: UploadFile= File(...)):
             diagnosis_label=DIAGNOSIS_MAP.get(pred_class,"Unknown"),
             confidence=round(conf_score,4)
         )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
     

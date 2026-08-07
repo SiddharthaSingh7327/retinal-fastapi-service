@@ -8,3 +8,5 @@ pillow
 requests
 streamlit
 pandas
+scikit-learn
+python-multipart
