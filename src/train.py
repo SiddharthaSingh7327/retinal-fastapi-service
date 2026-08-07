@@ -28,7 +28,7 @@ class RetinalDataset(Dataset):
 def evaluate(model, dataloader, device):
     model.eval()
     all_preds, all_labels=[],[]
-    with torch.np_grid():
+    with torch.no_grad():
         for images, labels in dataloader:
             images= images.to(device)
             outputs= model(images)
@@ -89,7 +89,7 @@ def train_model(epochs=3, batch_size=16, lr=0.001, val_split=0.2, seed=42):
             epoch_loss = running_loss /total
             epoch_acc = correct /total
             val_preds, val_labels= evaluate(model, val_loader, device)
-            val_acc= sum(p==1 for p, 1 in zip(val_preds, val_labels)) /max(len(val_labels), 1)
+            val_acc= sum(p==l for p, l in zip(val_preds, val_labels)) /max(len(val_labels), 1)
             print(
                  f"Epoch {epoch +1}/{epochs} -",
                  f"Train Loss: {epoch_loss:.4f} - Train Acc: {epoch_acc:.4f} - ",
@@ -98,13 +98,15 @@ def train_model(epochs=3, batch_size=16, lr=0.001, val_split=0.2, seed=42):
             #print(f"Epoch {epoch+1}/{epochs} - Loss: {epoch_loss:.4f} - Accuracy: {epoch_acc:.4f}")
         print("\nFinal validation classification report (per-class):")
         final_preds, final_labels= evaluate(model, val_loader, device)
+        manual_acc = sum(p == l for p, l in zip(final_preds, final_labels)) / len(final_labels)
+        print(f"Manual check: {manual_acc:.4f}")
         print(
              classification_report(
                   final_labels,
                   final_preds,
                   labels=[0,1,2,3,4],
                   target_names=[f"Class {i}" for i in range(5)],
-                  zero_devision=0,
+                  zero_division=0,
              )
         )
         torch.save(model.state_dict(), model_save_path)
