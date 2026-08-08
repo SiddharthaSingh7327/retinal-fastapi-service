@@ -4,8 +4,6 @@ A diabetic retinopathy (DR) classification service: a ResNet18 model fine-tuned 
 fundus images, served behind a FastAPI endpoint with a Streamlit demo, containerized
 with Docker.
 
-Built as a starter project for the VSI Lab.
-
 ---
 
 ## How it works
