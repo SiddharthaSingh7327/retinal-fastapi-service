@@ -11,12 +11,12 @@ services:
       - ./models:/app/models
 
   frontend:
-    build: .
-    container_name: dr_streamlit_frontend
-    command: streamlit run src/app_frontend.py --server.port=8501 --server.address=0.0.0.0
-    ports:
-      - "8501:8501"
-    environment:
-      - API_URL=http://api:8000/predict
-    depends_on:
-      - api
+      build: .
+      container_name: dr_streamlit_frontend
+      command: streamlit run app_frontend.py --server.port=8501 --server.address=0.0.0.0
+      ports:
+        - "8501:8501"
+      environment:
+        - API_URL=http://api:8000/predict
+      depends_on:
+        - api
