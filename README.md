@@ -1,309 +1,177 @@
 # Retinal Diagnostic API
 
 A diabetic retinopathy (DR) classification service: a ResNet18 model fine-tuned on
-fundus images, served behind a FastAPI endpoint with a Streamlit demo frontend,
-containerized with Docker.
+fundus images, served behind a FastAPI endpoint with a Streamlit demo, containerized
+with Docker.
 
-Built as a starter project for the VSI Lab, following the same pattern used for the
-InnoWave multi-agent pipeline (FastAPI + Pydantic structured output).
-
----
-
-## 1. Architecture
-
-```
-┌──────────────────┐      1. upload image       ┌───────────────────────┐
-│                   │ ─────────────────────────▶ │                       │
-│  Streamlit UI     │                             │   FastAPI Service     │
-│  (app_frontend.py)│ ◀───────────────────────── │   (src/api/app.py)    │
-│                   │      4. JSON response       │                       │
-└──────────────────┘                              └───────────┬───────────┘
-                                                                │ 2. crop + resize +
-                                                                │    normalize
-                                                                ▼
-                                                    ┌───────────────────────┐
-                                                    │  crop_dark_borders_pil │
-                                                    │  (src/imgutils.py)     │
-                                                    └───────────┬───────────┘
-                                                                │
-                                                                ▼
-                                                    ┌───────────────────────┐
-                                                    │  ResNet18 (fc → 5)     │
-                                                    │  models/model.pth      │
-                                                    │  3. forward pass       │
-                                                    │     + softmax          │
-                                                    └───────────────────────┘
-```
-
-**Offline training pipeline** (run once, before the API can serve real predictions):
-
-```
-download_data.py  ──▶  data/raw/train.csv + train_images/
-        │
-        ▼
-   eda.py (optional, inspects class balance)
-        │
-        ▼
- preprocess.py  ──▶  crop_dark_borders() + resize  ──▶  data/processed/train_images/
-        │
-        ▼
-   train.py  ──▶  fine-tune ResNet18 with class-weighted loss + augmentation
-        │           ──▶  train/val split, per-class metrics
-        ▼
-   models/model.pth
-```
-
-### Why this design
-
-- **ResNet18, not a custom CNN**: a pretrained backbone converges in a handful of
-  epochs on a small (~250 image) sample set. Training from scratch would need far
-  more data than is practical for a starter project.
-- **Shared crop logic (`src/imgutils.py`)**: fundus images have irregular black
-  borders. `preprocess.py` crops these out before training. The API endpoint calls
-  the *same* crop function before inference — if it didn't, the model would be
-  evaluated on a different image distribution than it was trained on, silently
-  hurting accuracy. This was a real bug in an early version (see "Bugs found and
-  fixed" below), which is why this logic now lives in one shared module instead of
-  being duplicated.
-- **Pydantic response model**: `predicted_class`, `diagnosis_label`, and `confidence`
-  are strongly typed and validated on the way out of `/predict`, mirroring the
-  structured-output pattern used in the InnoWave RAG pipeline.
-- **Class-weighted loss + augmentation**: the DR dataset is heavily imbalanced (most
-  images are "No DR"). `train.py` uses `sklearn`'s `compute_class_weight('balanced', ...)`
-  to weight the loss function, plus random flip/rotation augmentation, to reduce the
-  model's tendency to just predict the majority class. See "Results" below for the
-  measured tradeoff this introduces.
-- **Automated test suite (`test_api.sh`)**: covers endpoint schema validation, error
-  handling (bad/missing/empty files), prediction idempotency, latency, and a live
-  batch-accuracy check against the running API — not just unit-level checks.
+Built as a starter project for the VSI Lab.
 
 ---
 
-## 2. Project structure
+## How it works
+
+```
+Streamlit UI  ──upload image──▶  FastAPI /predict  ──▶  preprocess_for_inference()
+(app_frontend.py)                (src/api/app.py)        (src/imgutils.py:
+                                                            crop + resize with cv2,
+                                                            mirrors preprocess.py)
+                                                                    │
+                                                                    ▼
+                                                          ResNet18 (fc → 5 classes)
+                                                          models/model.pth
+                                                                    │
+                                                                    ▼
+                                              JSON: {predicted_class, diagnosis_label, confidence}
+```
+
+**Offline training pipeline** (run once before the API can serve real predictions):
+```
+download_data.py → eda.py (optional) → preprocess.py → train.py → models/model.pth
+```
+
+**Key design choices:**
+- **ResNet18**, not a custom CNN — a pretrained backbone converges fast on a small
+  (~250 image) sample, which training from scratch wouldn't.
+- **Shared preprocessing (`src/imgutils.py`)** — `preprocess.py` and `app.py` both
+  call the same `preprocess_for_inference()` function, so training and inference see
+  images processed identically. This matters more than it sounds like (see "Bugs
+  found and fixed" below).
+- **Class-weighted loss + augmentation** in `train.py` — the dataset is ~50% "No DR,"
+  so an unweighted model just learns to guess the majority class.
+- **`test_api.sh`** — automated test suite covering schema validation, error
+  handling, idempotency, latency, and live batch accuracy.
+
+---
+
+## Project structure
 
 ```
 retina-dr-api/
-├── data/
-│   ├── raw/               # train.csv + original downloaded images
-│   └── processed/         # cropped + resized images (output of preprocess.py)
-├── models/
-│   └── model.pth          # trained weights (generated by train.py)
+├── data/                    # raw/processed images (gitignored, excluded from Docker builds)
+├── models/model.pth         # trained weights
 ├── src/
-│   ├── api/
-│   │   └── app.py         # FastAPI service
-│   ├── imgutils.py         # shared crop logic (used by preprocess.py AND app.py)
-│   ├── download_data.py
-│   ├── eda.py
-│   ├── preprocess.py
-│   └── train.py
-├── app_frontend.py         # Streamlit demo UI (project root, not inside src/)
-├── check_crop_consistency.py  # sanity check: train-time vs inference-time crop (project root)
-├── test_api.sh              # automated API test suite
-├── Dockerfile
-├── docker-compose.yml       # two services: api (FastAPI, :8000) + frontend (Streamlit, :8501)
-├── .dockerignore
+│   ├── api/app.py           # FastAPI service
+│   ├── imgutils.py          # shared crop + resize logic
+│   ├── download_data.py, eda.py, preprocess.py, train.py
+├── app_frontend.py          # Streamlit demo (project root, not src/)
+├── check_crop_consistency.py  # verifies train/inference preprocessing match (project root)
+├── test_api.sh
+├── Dockerfile, docker-compose.yml, .dockerignore
 ├── requirements.txt
 └── README.md
 ```
-
-**Note:** `app_frontend.py` and `check_crop_consistency.py` must live at the project
-root, not inside `src/` — the Dockerfile, `streamlit run` command, and `test_api.sh`
-all assume root placement.
+`app_frontend.py` and `check_crop_consistency.py` must stay at the project root —
+the Dockerfile, `streamlit run`, and `test_api.sh` all expect them there.
 
 ---
 
-## 3. Setup
+## Setup
 
-### Prerequisites
-- Python 3.10+
-- A [Kaggle account + API token](https://www.kaggle.com/docs/api) (`~/.kaggle/kaggle.json`)
-  for `download_data.py`
-- Docker Desktop (optional, for containerized run)
-
-### Install dependencies
 ```bash
 python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
+source venv/bin/activate
 pip install -r requirements.txt
 ```
+Needs `torch`, `torchvision`, `fastapi`, `uvicorn[standard]`, `pydantic`, `pillow`,
+`opencv-python`, `pandas`, `numpy`, `scikit-learn`, `streamlit`, `requests`,
+`python-multipart`. Also needs a [Kaggle API token](https://www.kaggle.com/docs/api)
+(`~/.kaggle/kaggle.json`) for `download_data.py`.
 
-`requirements.txt` should include at minimum:
-```
-torch
-torchvision
-fastapi
-uvicorn[standard]
-pydantic
-pillow
-opencv-python
-pandas
-numpy
-scikit-learn
-streamlit
-requests
-python-multipart
-```
-(`python-multipart` is required by FastAPI for `UploadFile`; `scikit-learn` is used
-for class weighting and the per-class validation report in `train.py`; `opencv-python`
-is required by `imgutils.py` — all three are easy to forget since they're not always
-installed by default, and missing any of them will surface as a runtime import error
-rather than a build-time one.)
-
----
-
-## 4. Running the pipeline end to end
-
+## Run the pipeline
 ```bash
-# 1. Download a sample of the APTOS 2019 dataset
 python src/download_data.py
-
-# 2. (Optional) Inspect class balance
-python src/eda.py
-
-# 3. Crop + resize images for training
+python src/eda.py            # optional
 python src/preprocess.py
-
-# 4. Train the classifier (produces models/model.pth)
-python src/train.py
+python src/train.py          # produces models/model.pth
 ```
 
-## 5. Running the API
+## Run the API
 
 **Locally:**
 ```bash
 uvicorn src.api.app:app --reload --host 0.0.0.0 --port 8000
 ```
-Visit `http://127.0.0.1:8000/docs` for interactive Swagger UI, or test directly:
 ```bash
-curl -X POST "http://127.0.0.1:8000/predict" \
-  -F "file=@data/raw/train_images/000c1434d8d7.png"
+curl -X POST "http://127.0.0.1:8000/predict" -F "file=@data/raw/train_images/000c1434d8d7.png"
+```
+```json
+{"filename": "000c1434d8d7.png", "predicted_class": 2, "diagnosis_label": "Moderate Diabetic Retinopathy", "confidence": 0.8123}
 ```
 
-**With Docker:**
+**With Docker** (confirmed working end to end):
 ```bash
 docker compose up --build
 ```
-This starts two containers: the FastAPI backend (`dr_fastapi_backend`, port 8000) and
-the Streamlit frontend (`dr_streamlit_frontend`, port 8501). A `.dockerignore` file
-excludes `data/` from the build context to keep builds fast — the running containers
-don't need the raw/processed training images, only `models/model.pth`.
+Starts two containers — `dr_fastapi_backend` (port 8000) and `dr_streamlit_frontend`
+(port 8501). `.dockerignore` excludes `data/` to keep builds fast.
 
-**Example response:**
-```json
-{
-  "filename": "000c1434d8d7.png",
-  "predicted_class": 2,
-  "diagnosis_label": "Moderate Diabetic Retinopathy",
-  "confidence": 0.8123
-}
-```
-
-## 6. Running the demo frontend
-
+## Run the demo
 ```bash
-# make sure the API is running first (see above)
 streamlit run app_frontend.py
 ```
-By default it points at `http://127.0.0.1:8000/predict`. Override with:
+Override the API target with `API_URL=http://your-host:8000/predict streamlit run app_frontend.py`.
+
+## Testing
 ```bash
-API_URL=http://your-api-host:8000/predict streamlit run app_frontend.py
-```
-
-## 7. Testing
-
-Two things to run once the API is up (local or Docker):
-
-```bash
-# Full automated test suite: schema validation, error handling, idempotency,
-# latency, batch accuracy against train.csv
 chmod +x test_api.sh
-./test_api.sh
+./test_api.sh                 # local: http://127.0.0.1:8000
+API_URL="http://127.0.0.1:<port>" ./test_api.sh   # or against Docker
 
-# Against Docker instead of local, if mapped to a different port:
-API_URL="http://127.0.0.1:<port>" ./test_api.sh
-```
-
-```bash
-# Verify training-time and inference-time image cropping produce identical output
 python check_crop_consistency.py data/raw/train_images/<some_id>.png
 ```
 
 ---
 
-## 8. Results
+## Results
 
-Validation results on a 200-train / 50-val split of a 250-image sample.
+200-train / 50-val split of a 250-image sample. Overall accuracy is misleading here
+since the dataset is ~50% "No DR" — per-class recall tells the real story.
 
-**Baseline (no class weighting, no augmentation):**
+| Metric | Baseline | + class weighting & augmentation |
+|---|---|---|
+| Overall accuracy | 0.76 | 0.66 |
+| Class 0 (No DR) recall | 1.00 | 0.81 |
+| Class 1 (Mild) recall | 0.25 | 0.75 |
+| Class 2 (Moderate) recall | 0.77 | 0.69 |
+| Class 3 (Severe) recall | 0.00 | 0.00 |
+| Class 4 (Proliferative) recall | 0.25 | 0.00 |
 
-| Metric | Value |
-|---|---|
-| Overall accuracy | 0.76 |
-| Class 0 (No DR) recall | 1.00 |
-| Class 1 (Mild) recall | 0.25 |
-| Class 2 (Moderate) recall | 0.77 |
-| Class 3 (Severe) recall | 0.00 |
-| Class 4 (Proliferative) recall | 0.25 |
-
-**With class-weighted loss + augmentation:**
-
-| Metric | Value |
-|---|---|
-| Overall accuracy | 0.66 |
-| Class 0 (No DR) recall | 0.81 |
-| Class 1 (Mild) recall | 0.75 |
-| Class 2 (Moderate) recall | 0.69 |
-| Class 3 (Severe) recall | 0.00 |
-| Class 4 (Proliferative) recall | 0.00 |
-
-**Takeaway:** overall accuracy is a misleading metric here — the dataset is ~50% "No
-DR," so a model that's simply good at the majority class scores well without being a
-useful 5-way classifier. Class weighting substantially improved recall on Class 1
-(0.25 → 0.75), but traded off overall accuracy and Class 0/4 recall, which is the
-expected effect of reweighting on a dataset this small. Class 3 had zero recall in
-both configurations — likely too few training examples (only 3 in the validation
-split) for either approach to learn from.
-
-A live batch check against the running API (10 random images, cross-referenced
-against `train.csv`) independently confirmed ~0.80 accuracy, consistent with the
-`train.py` validation numbers.
+Class weighting substantially improved Class 1 recall but traded off overall
+accuracy and Class 0/4 recall — expected on a dataset this small. Class 3 stayed at
+zero recall in both configurations (only 3 validation examples). A live batch check
+against the running API (10 random images vs. `train.csv`) independently landed
+around 0.70–0.80 accuracy across runs, consistent with the `train.py` numbers.
 
 ---
 
-## 9. Bugs found and fixed
+## Bugs found and fixed
 
-Documented here because the process is as relevant as the result for a starter
-project like this.
-
-1. **Train/inference preprocessing mismatch.** `preprocess.py` crops dark borders
-   from fundus images before training. An early version of the API's `/predict`
-   endpoint skipped that same crop at inference time, meaning the model was
-   evaluated on a different image distribution than it was trained on. Fixed by
-   factoring the crop logic into a shared module (`src/imgutils.py`) used by both
-   `preprocess.py` and `app.py`, with `check_crop_consistency.py` added to verify
-   pixel-level agreement between the two code paths going forward.
-2. **Validation accuracy computation bug.** Per-epoch printed validation accuracy
-   didn't match the final `classification_report`'s accuracy — traced to a variable
-   typo (`p == 1` instead of `p == l`) that silently computed something unrelated to
-   actual accuracy. Fixed, and a manual recomputation was added as a standing
-   cross-check so any future discrepancy is caught immediately rather than trusted
-   silently.
+1. **Train/inference crop mismatch.** `preprocess.py` crops dark borders before
+   training; an early API version skipped that crop at inference time, so the model
+   saw a different image distribution live than it did during training. Fixed by
+   moving the crop logic into `src/imgutils.py`, shared by both.
+2. **Validation accuracy bug.** Per-epoch val accuracy didn't match the final
+   report — traced to a typo (`p == 1` instead of `p == l`) that silently computed
+   the wrong thing. Fixed, and added a manual cross-check as a standing guard.
+3. **Resize interpolation mismatch.** Even after fixing #1, `check_crop_consistency.py`
+   still showed a real gap (max pixel diff of 65) — `preprocess.py` resizes with
+   `cv2.resize`, but the API was resizing with `torchvision`'s PIL-based resize, a
+   different interpolation algorithm. Fixed by adding `preprocess_for_inference()`
+   to `imgutils.py`, which does crop *and* resize with `cv2`, exactly matching
+   `preprocess.py`. `check_crop_consistency.py` now reports a max pixel difference
+   of 0.
 
 ---
 
-## 10. Known limitations
+## Known limitations
+- Trained on ~250 images, not the full APTOS dataset — a proof of concept, not a
+  clinical benchmark.
+- Class 3 (Severe) has almost no validation support and near-zero recall so far.
+- Not validated against clinical ground truth beyond the Kaggle labels; not intended
+  for real diagnostic use.
 
-- Trained on a small sample (~250 images) of the APTOS 2019 dataset, not the full
-  competition set — accuracy numbers are a proof of concept, not a clinical benchmark.
-- Class 3 (Severe) has near-zero support in the validation split and near-zero
-  recall in both model configurations tried so far.
-- Not validated against any clinical ground truth beyond the Kaggle labels; **not
-  intended for real diagnostic use.**
-
-## 11. Next steps
-
-- Try oversampling minority classes in addition to loss weighting.
-- Swap the sample-only `download_data.py` for the full dataset once compute/storage
-  allows, particularly to get more Class 3 examples.
-- Try freezing most of ResNet18 and only fine-tuning the final layer, to compare
-  against full fine-tuning on this small a dataset.
+## Next steps
+- Try oversampling minority classes alongside loss weighting.
+- Use the full dataset, particularly to get more Class 3 examples.
+- Compare full fine-tuning against freezing most of ResNet18 and only training the
+  final layer.
