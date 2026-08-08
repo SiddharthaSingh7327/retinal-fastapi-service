@@ -6,6 +6,8 @@ from torch.utils.data import Dataset, DataLoader, random_split
 from torchvision import transforms, models
 from PIL import Image
 from sklearn.metrics import classification_report
+from sklearn.utils.class_weight import compute_class_weight
+import numpy as np
 
 class RetinalDataset(Dataset):
     def __init__(self, csv_file, img_dir, transform=None):
@@ -46,6 +48,8 @@ def train_model(epochs=3, batch_size=16, lr=0.001, val_split=0.2, seed=42):
         os.makedirs(output_model_dir, exist_ok=True)
         model_save_path= os.path.join(output_model_dir, "model.pth")
         data_transforms= transforms.Compose([
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomRotation(15),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456,0.406],std=[0.229,0.224,0.225])
         ])
@@ -67,7 +71,10 @@ def train_model(epochs=3, batch_size=16, lr=0.001, val_split=0.2, seed=42):
         model.fc= nn.Linear(num_ftrs,5)
         device= torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model= model.to(device)
-        criterion= nn.CrossEntropyLoss()
+        train_labels= [full_dataset.df.iloc[i]['diagnosis'] for i in train_dataset.indices]
+        class_weights= compute_class_weight('balanced', classes=np.array([0,1,2,3,4]), y=train_labels)
+        class_weights= torch.tensor(class_weights, dtype=torch.float32).to(device)
+        criterion= nn.CrossEntropyLoss(weight=class_weights)
         optimizer= torch.optim.Adam(model.parameters(), lr=lr)
         print("Starting training process")
         model.train()

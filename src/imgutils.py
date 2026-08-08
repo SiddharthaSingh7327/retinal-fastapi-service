@@ -22,7 +22,7 @@ def crop_dark_borders(img: np.ndarray, tol:int=7) -> np.ndarray:
         return np.stack(channels, axis=-1)
     else:
         raise ValueError(f"Unsupported image shape: {img.shape}")
-def crop_dark_borders_pill(pil_image):
+def crop_dark_borders_pil(pil_image):
     rgb_array= np.array(pil_image)
     bgr_array= rgb_array[:,:,::-1].copy()
     cropped_bgr= crop_dark_borders(bgr_array, tol=7)

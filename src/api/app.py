@@ -1,15 +1,15 @@
 import io
 import os
+import sys
 import torch
 import torch.nn as nn
-import sys
 from torchvision import transforms, models
 from PIL import Image
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from pydantic import BaseModel
-from imgutils import crop_dark_borders_pill
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from imgutils import crop_dark_borders_pil
 
 class PredictionResponse(BaseModel):
     filename:str
@@ -58,7 +58,7 @@ async def predict(file: UploadFile= File(...)):
     try:
         contents= await file.read()
         image= Image.open(io.BytesIO(contents)).convert("RGB")
-        image= crop_dark_borders_pill(image)
+        image= crop_dark_borders_pil(image)
         tensor = inference_transforms(image).unsqueeze(0).to(device)
         with torch.no_grad():
             outputs= model(tensor)
