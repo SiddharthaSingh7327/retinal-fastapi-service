@@ -10,3 +10,4 @@ streamlit
 pandas
 scikit-learn
 python-multipart
+opencv-python

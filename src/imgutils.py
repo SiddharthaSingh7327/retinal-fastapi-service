@@ -5,7 +5,7 @@ from PIL import Image
 def crop_dark_borders(img: np.ndarray, tol:int=7) -> np.ndarray:
     if img.ndim ==2:
         mask=img>tol
-        if mask.any():
+        if not mask.any():
             return img
         return img[np.ix_(mask.any(1), mask.any(0))]
     elif img.ndim ==3:
@@ -28,3 +28,12 @@ def crop_dark_borders_pil(pil_image):
     cropped_bgr= crop_dark_borders(bgr_array, tol=7)
     cropped_rgb= cropped_bgr[:,:,::-1]
     return Image.fromarray(cropped_rgb)
+def preprocess_for_inference(image_bytes: bytes, size: int = 224):
+    file_bytes = np.frombuffer(image_bytes, dtype=np.uint8)
+    bgr_img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+    if bgr_img is None:
+        raise ValueError("Could not decode image bytes")
+    cropped_bgr = crop_dark_borders(bgr_img, tol=7)
+    resized_bgr = cv2.resize(cropped_bgr, (size, size))
+    resized_rgb = cv2.cvtColor(resized_bgr, cv2.COLOR_BGR2RGB)
+    return resized_rgb

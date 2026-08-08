@@ -9,7 +9,7 @@ from fastapi import FastAPI, File, UploadFile, HTTPException
 from pydantic import BaseModel
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from imgutils import crop_dark_borders_pil
+from imgutils import preprocess_for_inference 
 
 class PredictionResponse(BaseModel):
     filename:str
@@ -42,12 +42,12 @@ else:
 model= model.to(device)
 model.eval()
 
-
-inference_transforms= transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225])
-])
+inference_transform = transforms.Compose(
+    [
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ]
+)
 @app.get("/")
 def read_root():
     return {"status": "ok", "message":"Retinal Diagnostic API Service is running."}
@@ -56,10 +56,9 @@ async def predict(file: UploadFile= File(...)):
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Uploaded file must be an image.")
     try:
-        contents= await file.read()
-        image= Image.open(io.BytesIO(contents)).convert("RGB")
-        image= crop_dark_borders_pil(image)
-        tensor = inference_transforms(image).unsqueeze(0).to(device)
+        contents = await file.read()
+        image_array = preprocess_for_inference(contents, size=224)
+        tensor = inference_transform(image_array).unsqueeze(0).to(device)
         with torch.no_grad():
             outputs= model(tensor)
             probabilities= torch.softmax(outputs, dim=1)
@@ -72,8 +71,8 @@ async def predict(file: UploadFile= File(...)):
             diagnosis_label=DIAGNOSIS_MAP.get(pred_class,"Unknown"),
             confidence=round(conf_score,4)
         )
-    except HTTPException:
-        raise
+    except HTTPException:  
+        raise             
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
     
