@@ -4,8 +4,6 @@ A diabetic retinopathy (DR) classification service: a ResNet18 model fine-tuned 
 fundus images, served behind a FastAPI endpoint with a Streamlit demo, containerized
 with Docker.
 
-Built as a starter project for the VSI Lab.
-
 ---
 
 ## How it works
@@ -170,8 +168,4 @@ around 0.70–0.80 accuracy across runs, consistent with the `train.py` numbers.
 - Not validated against clinical ground truth beyond the Kaggle labels; not intended
   for real diagnostic use.
 
-## Next steps
-- Try oversampling minority classes alongside loss weighting.
-- Use the full dataset, particularly to get more Class 3 examples.
-- Compare full fine-tuning against freezing most of ResNet18 and only training the
-  final layer.
+
