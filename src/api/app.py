@@ -1,3 +1,11 @@
+'''
+app.py
+
+This is the web service (API) that people/apps talk to when they want a
+predictions. You can upload an retinal photo, the program will then run
+our trained AI model, run the photo through it and sends the result back as JSON.
+
+'''
 import io
 import os
 import sys
@@ -12,6 +20,12 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from imgutils import preprocess_for_inference 
 
 class PredictionResponse(BaseModel):
+    '''
+    This function defines exactly what a response from this API looks like, every
+    prediction send back to the user will always have these 4 pieces of information
+    in the exact same format. This helps us prevent bugs since the API will complain
+    if the code ever tries to send back something that doesnt match this shape.
+    '''
     filename:str
     predicted_class: int
     diagnosis_label: str
@@ -42,6 +56,7 @@ else:
 model= model.to(device)
 model.eval()
 
+
 inference_transform = transforms.Compose(
     [
         transforms.ToTensor(),
@@ -50,9 +65,16 @@ inference_transform = transforms.Compose(
 )
 @app.get("/")
 def read_root():
+    '''
+    This confirms that the server is still running
+    '''
     return {"status": "ok", "message":"Retinal Diagnostic API Service is running."}
 @app.post("/predict", response_model=PredictionResponse)
 async def predict(file: UploadFile= File(...)):
+    '''
+    This is the main endpoint, someone uplaods a photo here and this function returns
+    the models prediction.
+    '''
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Uploaded file must be an image.")
     try:
