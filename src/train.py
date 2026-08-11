@@ -1,3 +1,14 @@
+'''
+train.py
+
+This is very the training happens. It takes the prepared retina image
+which is already cropped and resized by preprocess.py along with their
+correct answer from train.csv and then trains the AI model to recognize
+diabetic retinopathy severity on its own. 
+
+For this file to work we must run preprocess.py first as this trains on its 
+output.
+'''
 import os
 import pandas as pd
 import torch
@@ -10,7 +21,12 @@ from sklearn.utils.class_weight import compute_class_weight
 import numpy as np
 
 class RetinalDataset(Dataset):
+    '''
+    This class knows hoe to load one eye image plus its correct answer
+    at a time whenever the training code asks for one. 
+    '''
     def __init__(self, csv_file, img_dir, transform=None):
+        
         self.df=pd.read_csv(csv_file)
         self.img_dir= img_dir
         self.transform= transform
@@ -28,6 +44,15 @@ class RetinalDataset(Dataset):
             image=self.transform(image)
         return image, label
 def evaluate(model, dataloader, device):
+    """
+    Runs the model over a set of images WITHOUT teaching it anything (no
+    learning happens here, just checking how it currently does), and
+    returns what it guessed alongside what the correct answers actually were.
+ 
+    This is used both after every round of training (to keep an eye on how
+    well the model is learning) and once more at the very end (to build a
+    detailed final report).
+    """
     model.eval()
     all_preds, all_labels=[],[]
     with torch.no_grad():
@@ -40,6 +65,27 @@ def evaluate(model, dataloader, device):
     model.train()
     return all_preds,all_labels
 def train_model(epochs=3, batch_size=16, lr=0.001, val_split=0.2, seed=42):
+        """
+    Trains the model and saves the result to models/model.pth so the API
+    can load it later.
+ 
+    Args:
+        epochs: how many times to go through the entire training set.
+                More epochs = more learning, but too many can cause the
+                model to just memorize the training images instead of
+                actually learning to generalize.
+        batch_size: how many images to look at together before updating
+                    what the model has learned.
+        lr: "learning rate", how big a step the model takes each time it
+            updates. Too big and it can overshoot; too small and it learns
+            very slowly.
+        val_split: what fraction of the images to set aside for TESTING the
+                   model rather than teaching it, so we can honestly check
+                   how well it's doing on images it's never seen before.
+        seed: a fixed random "starting point" so that re running this
+              produces the same train/test split every time, making
+              results reproducible.
+        """
         script_dir= os.path.dirname(os.path.abspath(__file__))
         project_root= os.path.abspath(os.path.join(script_dir, ".."))
         csv_path= os.path.join(project_root, "data","raw","train.csv")
