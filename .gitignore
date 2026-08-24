@@ -6,13 +6,13 @@ venv/
 env/
 
 # Data and Models (Keep structure, don't upload large files)
-data/raw/train_images/*
-data/processed/train_images/*
-!data/raw/train_images/.gitkeep
-!data/processed/train_images/.gitkeep
-models/*.pth
-models/*.h5
-models/*.onnx
+#data/raw/train_images/*
+#data/processed/train_images/*
+#!data/raw/train_images/.gitkeep
+#!data/processed/train_images/.gitkeep
+#models/*.pth
+#models/*.h5
+#models/*.onnx
 
 # OS / Editor
 .DS_Store

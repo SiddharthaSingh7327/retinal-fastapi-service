@@ -45,7 +45,7 @@ def apply_degradation(img: np.ndarray, degradation_type: str, severity: int =1) 
     return DEGRADATION_FUNCTION[degradation_type](img, severity)
 
 if __name__ == "__main__":
-    if len(sys.argv !=2):
+    if len(sys.argv) !=2:
         print("usage: python degradation.py <path_to_test_image")
         sys.exit(1)
 
