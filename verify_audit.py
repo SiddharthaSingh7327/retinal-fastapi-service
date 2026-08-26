@@ -1,0 +1,32 @@
+import pandas as pd
+
+print("="*60)
+print("EyePACS (trainLabels15.csv)")
+print("="*60)
+eyepacs = pd.read_csv("data/processed/trainLabels15.csv")
+eyepacs["patient_id"] = eyepacs["image"].str.split("_").str[0]
+print("Total images:", len(eyepacs))
+print("Unique patients:", eyepacs["patient_id"].nunique())
+print("\nClass balance (level):")
+print(eyepacs["level"].value_counts().sort_index())
+print(eyepacs["level"].value_counts(normalize=True).round(4).sort_index())
+
+print("\n" + "="*60)
+print("APTOS (train.csv)")
+print("="*60)
+aptos = pd.read_csv("data/raw/train.csv")
+print("Total images:", len(aptos))
+print("Patient ID field present:", "No — only id_code and diagnosis")
+print("\nClass balance (diagnosis):")
+print(aptos["diagnosis"].value_counts().sort_index())
+print(aptos["diagnosis"].value_counts(normalize=True).round(4).sort_index())
+
+print("\n" + "="*60)
+print("EyeQ (Label_EyeQ_train.csv)")
+print("="*60)
+eyeq = pd.read_csv("data/processed/Label_EyeQ_train.csv")
+print("Train images:", len(eyeq))
+print("(Note: this is train split only — README total of 28,792 includes a separate test split not verified here)")
+print("\nQuality label breakdown:")
+print(eyeq["quality"].value_counts().sort_index())
+print(eyeq["quality"].value_counts(normalize=True).round(4).sort_index())

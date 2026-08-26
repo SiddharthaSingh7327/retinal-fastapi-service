@@ -5,7 +5,7 @@ Runs the trained model on a sample of images and exports the structured
 record format required by the research plan (Section 6.2): one CSV row per
 image, plus a saved embedding file per image.
 
-quality_score and patient_id are placeholders for now -- no quality gate
+quality_score and patient_id are placeholders for now, no quality gate
 exists yet, and APTOS doesn't have verified patient IDs.
 
 Run:

@@ -117,4 +117,8 @@ not a blocker, since EyePACS access is already confirmed.
 3. ~~Full EyeQ class balance check.~~ **Resolved for the train split** (12,543
    images, see table above). The test split (16,249 images) has not yet been
    independently downloaded and verified -- still open if the test split will be
+<<<<<<< HEAD
    used anywhere in this project.
+=======
+   used anywhere in this project.
+>>>>>>> 6ebf271 (Added the csv files and updated cvs file)
