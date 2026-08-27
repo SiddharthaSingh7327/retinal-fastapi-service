@@ -44,10 +44,14 @@ DR training data), EyeQ (image-quality labels), APTOS (external test set).
   the EyePACS-trained base classifier exists.
 - **Images:** 3,662.
 - **Labels:** `train.csv`, columns `id_code`, `diagnosis` (0-4), same scale as EyePACS.
-- **Patient ID:** Not confirmed. `id_code` appears to be an image-level identifier
-  only; no left/right eye pairing pattern found. Flagged as unresolved -- may need to
-  treat each image as its own "patient" for splitting purposes on this dataset, or
-  investigate further if patient-level splitting is required here too.
+- **Patient ID:** Not available. Confirmed -- `train.csv` contains only `id_code`
+  and `diagnosis`; no patient identifier or left/right-eye pairing field exists
+  anywhere in the file. This is a real gap, not just an unconfirmed detail: per
+  Section 5, patient-level splitting is required "whenever patient identifiers...
+  are available," and for APTOS it genuinely is not available, so patient-level
+  splitting cannot be enforced on this dataset. Splits on APTOS will necessarily be
+  image-level. Worth deciding explicitly (see open items) whether that's acceptable
+  given APTOS's role as the external/transfer test set rather than training data.
 - **Class balance:**
 
   | Class | Count | % |
@@ -63,15 +67,36 @@ DR training data), EyeQ (image-quality labels), APTOS (external test set).
 ## EyeQ (image-quality gate training data)
 
 - **Access:** Free, public GitHub repo (`HzFu/EyeQ`). No approval process.
-- **Images:** 28,792, labeled across three quality tiers: Good, Usable, Reject.
+- **Images:** 28,792 total per the repo's README (12,543 train + 16,249 test). The
+  train split has been independently downloaded and verified below; the test split
+  total is still taken from the README and has not yet been independently
+  downloaded/verified.
 - **Relationship to EyePACS:** EyeQ is a re-annotated *subset* of EyePACS -- it does
   not ship its own images. Labels are provided as `Label_EyeQ_train.csv` /
   `Label_EyeQ_test.csv`, referencing EyePACS image IDs. Since EyePACS access is
   already confirmed above, this is straightforward to layer on top: match EyeQ's
   labeled image IDs against the EyePACS images already available.
-- **Not yet checked:** exact class balance across Good/Usable/Reject, and whether
-  the ID format in EyeQ's CSVs matches the `<patient>_<eye>` format found in
-  `trainLabels15.csv` directly, or needs reformatting.
+- **ID format:** Confirmed. `Label_EyeQ_train.csv` image IDs (e.g.
+  `10009_left.jpeg`) follow the exact same `<patient_id>_<eye>` pattern as
+  EyePACS's `trainLabels15.csv`, just with the `.jpeg` extension included. Matching
+  EyeQ labels to EyePACS images is a straightforward string match once the
+  extension is stripped -- no reformatting needed.
+- **Class balance (train split, verified):**
+
+  | Quality | Code | Count | % |
+  |---|---|---|---|
+  | Good | 0 | 8,347 | 66.6% |
+  | Usable | 1 | 1,876 | 15.0% |
+  | Reject | 2 | 2,320 | 18.5% |
+
+  Note: the EyeQ README lists Usable (train) as 1,896 -- a small 20-image
+  discrepancy from the verified count of 1,876. Not investigated further, as it
+  doesn't materially change the class-balance picture.
+
+  For the binary framing used in Section 6.3 (adequate vs. reject), Good + Usable =
+  "adequate" (10,223 images, 81.5%) vs. Reject (2,320 images, 18.5%) -- a real but
+  manageable ~19% imbalance, comparable in scale to what class weighting already
+  handled for the DR classifier.
 
 ## Summary / no blockers
 
@@ -79,9 +104,17 @@ No access blockers across any of the three datasets -- all are freely available,
 no approval workflows, no cost. EyeQ's dependency on EyePACS is a sequencing note,
 not a blocker, since EyePACS access is already confirmed.
 
-## Open items before EyePACS training begins
+## Open items
 
-1. Confirm EyeQ's exact ID format against EyePACS's `<patient>_<eye>` pattern.
-2. Resolve APTOS's patient-ID gap (may not have one -- needs a decision on how to
-   handle external-test-set splitting without patient IDs).
-3. Full EyeQ class balance check.
+1. ~~Confirm EyeQ's exact ID format against EyePACS's `<patient>_<eye>` pattern.~~
+   **Resolved** -- confirmed identical format, `.jpeg` extension strip is the only
+   transformation needed.
+2. Resolve APTOS's patient-ID gap -- confirmed there is no patient ID field.
+   Decision still needed on how to handle external-test-set splitting without
+   patient IDs (image-level splitting is the only option; worth documenting
+   whether this is acceptable given APTOS's role as external test data rather
+   than training data).
+3. ~~Full EyeQ class balance check.~~ **Resolved for the train split** (12,543
+   images, see table above). The test split (16,249 images) has not yet been
+   independently downloaded and verified -- still open if the test split will be
+   used anywhere in this project.
