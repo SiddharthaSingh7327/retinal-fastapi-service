@@ -18,3 +18,18 @@ env/
 .DS_Store
 .vscode/
 .idea/
+
+# Prototype large/generated files
+prototype/data/
+prototype/models/
+prototype/outputs/
+prototype/degradation_test_output/
+
+# Current project data/model artifacts
+data/raw/
+data/processed/
+models/
+outputs/
+
+# Temporary Office files
+~$*
