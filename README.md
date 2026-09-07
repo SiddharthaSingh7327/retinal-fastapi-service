@@ -1,171 +1,69 @@
-# Retinal Diagnostic API
+# Beyond Abstention: Actionable DR Triage
 
-A diabetic retinopathy (DR) classification service: a ResNet18 model fine-tuned on
-fundus images, served behind a FastAPI endpoint with a Streamlit demo, containerized
-with Docker.
+A research project investigating how a diabetic retinopathy (DR) screening system can decide the appropriate next action for each fundus image. Beyond predicting a disease grade, the system aims to distinguish poor image quality, uncertain predictions, and potentially harmful under-grading.
 
----
+Our main question is: **Can severity-aware routing reduce missed referable and severe DR cases at the same expert-review workload?**
 
-## How it works
+## Approach
 
-```
-Streamlit UI  ──upload image──▶  FastAPI /predict  ──▶  preprocess_for_inference()
-(app_frontend.py)                (src/api/app.py)        (src/imgutils.py:
-                                                            crop + resize with cv2,
-                                                            mirrors preprocess.py)
-                                                                    │
-                                                                    ▼
-                                                          ResNet18 (fc → 5 classes)
-                                                          models/model.pth
-                                                                    │
-                                                                    ▼
-                                              JSON: {predicted_class, diagnosis_label, confidence}
-```
+The planned system combines three components:
 
-**Offline training pipeline** (run once before the API can serve real predictions):
-```
-download_data.py → eda.py (optional) → preprocess.py → train.py → models/model.pth
-```
+1. **Image-quality gate** — determines whether the image is adequate for grading.
+2. **Frozen DR classifier** — predicts five severity grades, from No DR to Proliferative DR.
+3. **Dual-risk router** — estimates the likelihood of any classification error and the expected harm of that error.
 
-**Key design choices:**
-- **ResNet18**, not a custom CNN — a pretrained backbone converges fast on a small
-  (~250 image) sample, which training from scratch wouldn't.
-- **Shared preprocessing (`src/imgutils.py`)** — `preprocess.py` and `app.py` both
-  call the same `preprocess_for_inference()` function, so training and inference see
-  images processed identically. This matters more than it sounds like (see "Bugs
-  found and fixed" below).
-- **Class-weighted loss + augmentation** in `train.py` — the dataset is ~50% "No DR,"
-  so an unweighted model just learns to guess the majority class.
-- **`test_api.sh`** — automated test suite covering schema validation, error
-  handling, idempotency, latency, and live batch accuracy.
+These outputs drive an ordered four-action policy:
 
----
+| Action | When it applies |
+| --- | --- |
+| **RE-IMAGE** | Image quality is insufficient for reliable grading. |
+| **PRIORITY REVIEW** | Severe/PDR probability or harmful-error risk is high. |
+| **ROUTINE REVIEW** | An adequate image has high referable-DR probability or classification-error risk. |
+| **AUTO-GRADE** | Image quality is adequate and none of the review conditions applies. |
 
-## Project structure
+Priority review can be triggered even when the classifier is confident. The aim is to identify potentially serious cases, rather than relying only on uncertainty.
 
-```
-retina-dr-api/
-├── data/                    # raw/processed images (gitignored, excluded from Docker builds)
-├── models/model.pth         # trained weights
-├── src/
-│   ├── api/app.py           # FastAPI service
-│   ├── imgutils.py          # shared crop + resize logic
-│   ├── download_data.py, eda.py, preprocess.py, train.py
-├── app_frontend.py          # Streamlit demo (project root, not src/)
-├── check_crop_consistency.py  # verifies train/inference preprocessing match (project root)
-├── test_api.sh
-├── Dockerfile, docker-compose.yml, .dockerignore
-├── requirements.txt
-└── README.md
-```
-`app_frontend.py` and `check_crop_consistency.py` must stay at the project root —
-the Dockerfile, `streamlit run`, and `test_api.sh` all expect them there.
+## Current progress
 
----
+The earlier proof-of-concept work is retained in `prototype/`. The repository also includes an initial ResNet18 classifier, FastAPI service, and utilities that export class probabilities, entropy, and image embeddings.
 
-## Setup
+The research specifications cover dataset selection, risk targets, action rules, and baseline comparisons. The full quality gate, dual-risk router, threshold calibration, and research evaluation remain to be implemented. Current exports still contain placeholder patient IDs and quality scores.
 
-```bash
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
-Needs `torch`, `torchvision`, `fastapi`, `uvicorn[standard]`, `pydantic`, `pillow`,
-`opencv-python`, `pandas`, `numpy`, `scikit-learn`, `streamlit`, `requests`,
-`python-multipart`. Also needs a [Kaggle API token](https://www.kaggle.com/docs/api)
-(`~/.kaggle/kaggle.json`) for `download_data.py`.
+**Training is planned on university-provided cloud HPC using datasets obtained through Kaggle. Compute time has been requested, and training on that allocation is pending.** The initial ResNet18 pipeline will be adapted for the study; the proposed research backbone is EfficientNet-B0 or ResNet-50.
 
-## Run the pipeline
-```bash
-python src/download_data.py
-python src/eda.py            # optional
-python src/preprocess.py
-python src/train.py          # produces models/model.pth
-```
+## Data and training
 
-## Run the API
+| Dataset | Planned role |
+| --- | --- |
+| EyePACS | Primary DR classifier training and internal evaluation. |
+| EyeQ or DeepDRiD | Image-quality training and evaluation. |
+| APTOS or DDR | External evaluation. |
 
-**Locally:**
-```bash
-uvicorn src.api.app:app --reload --host 0.0.0.0 --port 8000
-```
-```bash
-curl -X POST "http://127.0.0.1:8000/predict" -F "file=@data/raw/train_images/000c1434d8d7.png"
-```
-```json
-{"filename": "000c1434d8d7.png", "predicted_class": 2, "diagnosis_label": "Moderate Diabetic Retinopathy", "confidence": 0.8123}
-```
+The proposed data split is:
 
-**With Docker** (confirmed working end to end):
-```bash
-docker compose up --build
-```
-Starts two containers — `dr_fastapi_backend` (port 8000) and `dr_streamlit_frontend`
-(port 8501). `.dockerignore` excludes `data/` to keep builds fast.
+| Partition | Share | Purpose |
+| --- | --- | --- |
+| Base-model training | 60% | Train the DR classifier. |
+| Base-model validation | 10% | Select the checkpoint and hyperparameters. |
+| Router training | 15% | Train risk models on frozen-classifier outputs. |
+| Threshold calibration | 5% | Set action thresholds and review budgets. |
+| Final internal test | 10% | Evaluate after the models and thresholds are fixed. |
 
-## Run the demo
-```bash
-streamlit run app_frontend.py
-```
-Override the API target with `API_URL=http://your-host:8000/predict streamlit run app_frontend.py`.
+Patient-level separation will be used wherever identifiers are available. The classifier will be frozen before generating router-training outputs, and router-training images will be separate from base-model training images. External datasets will be evaluated separately from these internal partitions.
 
-## Testing
-```bash
-chmod +x test_api.sh
-./test_api.sh                 # local: http://127.0.0.1:8000
-API_URL="http://127.0.0.1:<port>" ./test_api.sh   # or against Docker
+The structured interface contains image and patient identifiers, true and predicted grades, five class probabilities, entropy, an embedding path, a quality score, and dataset/split metadata.
 
-python check_crop_consistency.py data/raw/train_images/<some_id>.png
-```
+## Evaluation
 
----
+We will compare the dual-risk router against maximum-softmax confidence, predictive entropy, MC Dropout, and a generic error predictor at matched review budgets of **10%, 20%, and 30%** of adequate images.
 
-## Results
+The main outcome is missed referable and Severe/PDR disease among AUTO-GRADE cases at the same review workload. Supporting measures include quality-gate performance, risk-coverage curves, calibration, and external-dataset results. Ablations will test whether embeddings and severity-sensitive risk targets improve routing.
 
-200-train / 50-val split of a 250-image sample. Overall accuracy is misleading here
-since the dataset is ~50% "No DR" — per-class recall tells the real story.
+## Next steps
 
-| Metric | Baseline | + class weighting & augmentation |
-|---|---|---|
-| Overall accuracy | 0.76 | 0.66 |
-| Class 0 (No DR) recall | 1.00 | 0.81 |
-| Class 1 (Mild) recall | 0.25 | 0.75 |
-| Class 2 (Moderate) recall | 0.77 | 0.69 |
-| Class 3 (Severe) recall | 0.00 | 0.00 |
-| Class 4 (Proliferative) recall | 0.25 | 0.00 |
+1. Prepare dataset partitions and the university HPC training workflow.
+2. Train and freeze the base classifier, then integrate the image-quality gate.
+3. Generate structured outputs and train the risk router.
+4. Calibrate action thresholds and complete baseline and external evaluations.
 
-Class weighting substantially improved Class 1 recall but traded off overall
-accuracy and Class 0/4 recall — expected on a dataset this small. Class 3 stayed at
-zero recall in both configurations (only 3 validation examples). A live batch check
-against the running API (10 random images vs. `train.csv`) independently landed
-around 0.70–0.80 accuracy across runs, consistent with the `train.py` numbers.
-
----
-
-## Bugs found and fixed
-
-1. **Train/inference crop mismatch.** `preprocess.py` crops dark borders before
-   training; an early API version skipped that crop at inference time, so the model
-   saw a different image distribution live than it did during training. Fixed by
-   moving the crop logic into `src/imgutils.py`, shared by both.
-2. **Validation accuracy bug.** Per-epoch val accuracy didn't match the final
-   report — traced to a typo (`p == 1` instead of `p == l`) that silently computed
-   the wrong thing. Fixed, and added a manual cross-check as a standing guard.
-3. **Resize interpolation mismatch.** Even after fixing #1, `check_crop_consistency.py`
-   still showed a real gap (max pixel diff of 65) — `preprocess.py` resizes with
-   `cv2.resize`, but the API was resizing with `torchvision`'s PIL-based resize, a
-   different interpolation algorithm. Fixed by adding `preprocess_for_inference()`
-   to `imgutils.py`, which does crop *and* resize with `cv2`, exactly matching
-   `preprocess.py`. `check_crop_consistency.py` now reports a max pixel difference
-   of 0.
-
----
-
-## Known limitations
-- Trained on ~250 images, not the full APTOS dataset — a proof of concept, not a
-  clinical benchmark.
-- Class 3 (Severe) has almost no validation support and near-zero recall so far.
-- Not validated against clinical ground truth beyond the Kaggle labels; not intended
-  for real diagnostic use.
-
-
+This is a research system and has not been clinically validated.
