@@ -1,4 +1,4 @@
-# Beyond Abstention: Actionable DR Triage
+# Actionable DR Triage
 
 A research project investigating how a diabetic retinopathy (DR) screening system can decide the appropriate next action for each fundus image. Beyond predicting a disease grade, the system aims to distinguish poor image quality, uncertain predictions, and potentially harmful under-grading.
 
